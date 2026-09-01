@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise WMS - Stock & Order Picking</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 50: '#f0f9ff', 500: '#0284c7', 600: '#0369a1', 700: '#075985' }
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .no-ellipsis {
+            white-space: normal !important;
+            word-break: break-word !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 min-h-screen flex flex-col font-sans transition-colors duration-200">
+
+    <header class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center space-x-3">
+                    <div class="p-2 bg-brand-600 text-white rounded-lg shadow">
+                        <i data-lucide="boxes" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg leading-tight tracking-wide">WMS PRO</h1>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Inventory & Order Picking System</p>
+                    </div>
+                </div>
+
+                <nav class="hidden md:flex space-x-1" id="desktopNav">
+                    </nav>
+
+                <div class="flex items-center space-x-2">
+                    <button onclick="toggleDarkMode()" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+                        <i data-lucide="sun" class="w-5 h-5 hidden dark:block"></i>
+                        <i data-lucide="moon" class="w-5 h-5 block dark:hidden"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="md:hidden border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 overflow-x-auto">
+            <nav class="flex px-2 py-1 space-x-1 min-w-max" id="mobileNav">
+                </nav>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6">
+
+        <section id="tab-stock" class="tab-content space-y-4">
+            <div class="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 class="text-xl font-bold flex items-center gap-2">
+                        <i data-lucide="warehouse" class="text-brand-500"></i> Physical Stock Management
+                    </h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Upload daily stock data at start of shift. New uploads overwrite active stock.</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                    <label class="cursor-pointer bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow flex items-center gap-2 transition w-full md:w-auto justify-center">
+                        <i data-lucide="upload" class="w-4 h-4"></i> Upload Stock File
+                        <input type="file" id="stockFileInput" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleStockUpload(event)">
+                    </label>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <span class="text-xs text-gray-500">Total Records</span>
+                    <p id="statTotalRecords" class="text-lg font-bold">0</p>
+                </div>
+                <div class="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <span class="text-xs text-gray-500">Unique Products</span>
+                    <p id="statUniqueProducts" class="text-lg font-bold">0</p>
+                </div>
+                <div class="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <span class="text-xs text-gray-500">Total Bins</span>
+                    <p id="statTotalBins" class="text-lg font-bold">0</p>
+                </div>
+                <div class="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <span class="text-xs text-gray-500">Total Quantity</span>
+                    <p id="statTotalQty" class="text-lg font-bold text-brand-500">0</p>
+                </div>
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-3">
+                <div class="relative">
+                    <i data-lucide="search" class="absolute left-3 top-3 text-gray-400 w-5 h-5"></i>
+                    <input type="text" id="stockSearchInput" placeholder="Search by Bin, Product, HU, Description, Old Mat No, Qty..." 
+                           oninput="renderStockTable()" 
+                           class="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-brand-500 outline-none text-sm">
+                </div>
+
+                <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                    <table class="w-full text-left text-xs sm:text-sm">
+                        <thead class="bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 uppercase font-semibold">
+                            <tr>
+                                <th class="p-3">Storage Bin</th>
+                                <th class="p-3">Product</th>
+                                <th class="p-3">Old Mat No</th>
+                                <th class="p-3">Handling Unit (HU)</th>
+                                <th class="p-3">Description</th>
+                                <th class="p-3 text-right">Quantity</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stockTableBody" class="divide-y divide-gray-200 dark:divide-gray-700">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-picking" class="tab-content space-y-4 hidden">
+            <div class="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 class="text-xl font-bold flex items-center gap-2">
+                        <i data-lucide="clipboard-list" class="text-brand-500"></i> Order Picking Execution
+                    </h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Add picking tasks manually or import via Excel (3 columns: PO, Product, Quantity).</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                    <button onclick="openAddOrderModal()" class="bg-gray-700 hover:bg-gray-800 text-white text-sm font-medium px-3 py-2 rounded-lg shadow flex items-center gap-1 transition">
+                        <i data-lucide="plus" class="w-4 h-4"></i> Add Manual Item
+                    </button>
+                    <label class="cursor-pointer bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-3 py-2 rounded-lg shadow flex items-center gap-1 transition">
+                        <i data-lucide="file-up" class="w-4 h-4"></i> Import Orders
+                        <input type="file" id="pickingFileInput" accept=".xlsx, .xls, .csv" class="hidden" onchange="handlePickingUpload(event)">
+                    </label>
+                    <button onclick="exportPickingExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2 rounded-lg shadow flex items-center gap-1 transition">
+                        <i data-lucide="download" class="w-4 h-4"></i> Export Report
+                    </button>
+                    <button onclick="clearPickingList()" class="bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium px-3 py-2 rounded-lg shadow flex items-center gap-1 transition">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i> Clear All Orders
+                    </button>
+                </div>
+            </div>
+
+            <div id="pickingProgressBanner" class="hidden bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 p-3 rounded-lg flex items-center justify-between">
+                <span id="pickingProgressText" class="text-sm font-medium text-brand-700 dark:text-brand-300">Completed 0/0 items</span>
+                <div class="w-1/3 bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
+                    <div id="pickingProgressBar" class="bg-brand-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div id="pickingListContainer" class="space-y-3">
+                </div>
+        </section>
+
+        <section id="tab-oldmat" class="tab-content space-y-4 hidden">
+            <div class="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 class="text-xl font-bold flex items-center gap-2">
+                        <i data-lucide="database" class="text-brand-500"></i> Old Material Number Mapping
+                    </h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Map Product codes to printed Old Material Numbers for fast identification.</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                    <button onclick="openAddOldMatModal()" class="bg-gray-700 hover:bg-gray-800 text-white text-sm font-medium px-3 py-2 rounded-lg shadow flex items-center gap-1 transition">
+                        <i data-lucide="plus" class="w-4 h-4"></i> Add Mapping
+                    </button>
+                    <label class="cursor-pointer bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-3 py-2 rounded-lg shadow flex items-center gap-1 transition">
+                        <i data-lucide="upload" class="w-4 h-4"></i> Import Excel (2 Cols)
+                        <input type="file" id="oldMatFileInput" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleOldMatUpload(event)">
+                    </label>
+                </div>
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-3">
+                <input type="text" id="oldMatSearchInput" placeholder="Search Product or Old Mat No..." oninput="renderOldMatTable()" class="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-brand-500 outline-none text-sm">
+                
+                <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 uppercase font-semibold">
+                            <tr>
+                                <th class="p-3">Product Code</th>
+                                <th class="p-3">Old Material Number</th>
+                                <th class="p-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="oldMatTableBody" class="divide-y divide-gray-200 dark:divide-gray-700">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-chemicals" class="tab-content hidden">
+            <div class="bg-white dark:bg-gray-800 p-12 rounded-xl border border-gray-200 dark:border-gray-700 text-center space-y-4">
+                <div class="inline-flex p-4 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-full">
+                    <i data-lucide="flask-conical" class="w-12 h-12"></i>
+                </div>
+                <h2 class="text-2xl font-bold">Chemicals Management Module</h2>
+                <p class="text-gray-500 max-w-md mx-auto">This module is currently under development and will be updated in future releases.</p>
+                <span class="inline-block px-3 py-1 bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 text-xs font-semibold rounded-full uppercase">Status: Pending Update</span>
+            </div>
+        </section>
+
+        <section id="tab-settings" class="tab-content space-y-4 hidden">
+            <div class="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                <h2 class="text-xl font-bold flex items-center gap-2 mb-4">
+                    <i data-lucide="settings" class="text-brand-500"></i> System Settings
+                </h2>
+
+                <div class="divide-y divide-gray-200 dark:divide-gray-700 space-y-4">
+                    <div class="pt-2 flex items-center justify-between">
+                        <div>
+                            <h3 class="font-medium text-sm">Theme Mode</h3>
+                            <p class="text-xs text-gray-500">Switch between Light and Dark interface mode</p>
+                        </div>
+                        <button onclick="toggleDarkMode()" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg text-sm font-medium">Toggle Theme</button>
+                    </div>
+
+                    <div class="pt-4 flex items-center justify-between">
+                        <div>
+                            <h3 class="font-medium text-sm">Device Layout Preference</h3>
+                            <p class="text-xs text-gray-500">Responsive design optimized for Mobile and Desktop screens</p>
+                        </div>
+                        <span class="text-xs px-2.5 py-1 bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 font-semibold rounded-full">Auto Responsive</span>
+                    </div>
+
+                    <div class="pt-4 flex items-center justify-between">
+                        <div>
+                            <h3 class="font-medium text-sm text-rose-600">Danger Zone: Reset All Data</h3>
+                            <p class="text-xs text-gray-500">Wipe all stock data, picking lists, and Old Mat mapping from local storage</p>
+                        </div>
+                        <button onclick="resetAllData()" class="px-4 py-2 bg-rose-600 text-white hover:bg-rose-700 rounded-lg text-sm font-medium">Reset System Data</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <div id="oldMatModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-md w-full shadow-2xl space-y-4 border border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-bold" id="oldMatModalTitle">Update Old Material Number</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs font-semibold uppercase text-gray-500">Product Code</label>
+                    <input type="text" id="modalProductInput" class="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm font-mono">
+                </div>
+                <div>
+                    <label class="text-xs font-semibold uppercase text-gray-500">Old Material Number</label>
+                    <input type="text" id="modalOldMatInput" placeholder="Enter Old Mat No..." class="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm font-mono focus:ring-2 focus:ring-brand-500 outline-none">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-2 pt-2">
+                <button onclick="closeOldMatModal()" class="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-sm">Cancel</button>
+                <button onclick="saveOldMatModal()" class="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="addOrderModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-md w-full shadow-2xl space-y-4 border border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-bold">Add Manual Picking Item</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs font-semibold uppercase text-gray-500">PO / Order Ref</label>
+                    <input type="text" id="manualPoInput" placeholder="e.g. PO-9901" class="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm">
+                </div>
+                <div>
+                    <label class="text-xs font-semibold uppercase text-gray-500">Product Code (Full or Last 5 Digits)</label>
+                    <input type="text" id="manualProductInput" placeholder="e.g. IN60000001190 or 1190 -> 01190" class="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm font-mono">
+                </div>
+                <div>
+                    <label class="text-xs font-semibold uppercase text-gray-500">Quantity Required</label>
+                    <input type="number" id="manualQtyInput" placeholder="e.g. 50" class="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-2 pt-2">
+                <button onclick="closeAddOrderModal()" class="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-sm">Cancel</button>
+                <button onclick="saveManualOrder()" class="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">Add Order Item</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Data State Variables
+        let stockData = JSON.parse(localStorage.getItem('wms_stock') || '[]');
+        let oldMatMap = JSON.parse(localStorage.getItem('wms_old_mat') || '{}');
+        let pickingList = JSON.parse(localStorage.getItem('wms_picking') || '[]');
+        let activeTab = 'stock';
+
+        const TABS = [
+            { id: 'stock', label: 'Physical Stock', icon: 'warehouse' },
+            { id: 'picking', label: 'Order Picking', icon: 'clipboard-list' },
+            { id: 'oldmat', label: 'Old Mat Database', icon: 'database' },
+            { id: 'chemicals', label: 'Chemicals', icon: 'flask-conical' },
+            { id: 'settings', label: 'Settings', icon: 'settings' }
+        ];
+
+        // App Initialization
+        window.addEventListener('DOMContentLoaded', () => {
+            renderNav();
+            renderStockTable();
+            renderPickingList();
+            renderOldMatTable();
+            lucide.createIcons();
+
+            // Check theme mode preference
+            if (localStorage.getItem('wms_theme') === 'light') {
+                document.documentElement.classList.remove('dark');
+            } else {
+                document.documentElement.classList.add('dark');
+            }
+        });
+
+        // Navigation Renderer
+        function renderNav() {
+            const desktopNav = document.getElementById('desktopNav');
+            const mobileNav = document.getElementById('mobileNav');
+
+            const navHtml = TABS.map(tab => `
+                <button onclick="switchTab('${tab.id}')" 
+                        class="tab-btn px-3 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 transition ${activeTab === tab.id ? 'bg-brand-500 text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}">
+                    <i data-lucide="${tab.icon}" class="w-4 h-4"></i>
+                    <span>${tab.label}</span>
+                </button>
+            `).join('');
+
+            desktopNav.innerHTML = navHtml;
+            mobileNav.innerHTML = navHtml;
+        }
+
+        function switchTab(tabId) {
+            activeTab = tabId;
+            renderNav();
